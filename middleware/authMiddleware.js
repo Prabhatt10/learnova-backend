@@ -1,43 +1,3 @@
-// const jwt = require("jsonwebtoken");
-// require("dotenv").config();
-
-// exports.auth = async (req,res,next) => {
-//     try {
-//         const token = req.body.token ||
-//                       req.cookies.token ||
-//                       (req.header("Authorization") && req.header("Authorization").replace("Bearer ","").trim());
-        
-//         if(!token){
-//             return res.status(401).json({
-//                 success : false,
-//                 message : "token is missing"
-//             });
-//         }
-
-//         // verify
-//         try {
-//             const decode = jwt .verify(token,process.env.JWT_SECRET);
-//             // Storing the decoded JWT payload in the request object for further use
-// 			req.user = decode;
-//         } catch (error) {
-//             return res.status(401).json({
-//                 success : false,
-//                 message : 'token is invalid'
-//             });
-//         }
-
-//         next();
-        
-//     } catch (error) {
-//         console.log(error);
-//         return res.status(500).json({
-//             success : false,
-//             message : error.message
-//         });
-//     }
-// }
-
-
 const jwt = require("jsonwebtoken");
 require("dotenv").config();
 
@@ -61,6 +21,7 @@ exports.auth = async (req, res, next) => {
     let decoded;
     try {
       decoded = jwt.verify(token, process.env.JWT_SECRET);
+      console.log("Decode is : ", decoded);
     } catch (error) {
       return res.status(401).json({
         success: false,
@@ -69,18 +30,31 @@ exports.auth = async (req, res, next) => {
     }
 
     // Normalize payload → always ensure req.user.id is available
-    if (decoded.id) {
-      req.user = { id: decoded.id };
-    } else if (decoded._id) {
-      req.user = { id: decoded._id };
-    } else if (decoded.user && decoded.user.id) {
-      req.user = { id: decoded.user.id };
-    } else if (decoded.user && decoded.user._id) {
-      req.user = { id: decoded.user._id };
-    } else {
+    // if (decoded.id) {
+    //   req.user = { id: decoded.id };
+    // } else if (decoded._id) {
+    //   req.user = { id: decoded._id };
+    // } else if (decoded.user && decoded.user.id) {
+    //   req.user = { id: decoded.user.id };
+    // } else if (decoded.user && decoded.user._id) {
+    //   req.user = { id: decoded.user._id };
+    // } else if (decoded.userId) {   // 🔥 add this
+    //   req.user = { id: decoded.userId };
+    // } else {
+    //   return res.status(401).json({
+    //     success: false,
+    //     message: "Invalid token payload",
+    //   });
+    // }
+
+    req.user = { id: decoded.id || decoded._id || decoded.userId || decoded.user._id };
+
+    console.log("ID in auth middleware is : ",req.user._id);
+
+    if (!req.user.id) {
       return res.status(401).json({
         success: false,
-        message: "Invalid token payload",
+        message: "Token payload missing user id",
       });
     }
 

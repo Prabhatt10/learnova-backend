@@ -4,6 +4,7 @@ const jwt = require('jsonwebtoken');
 const OTP = require("../model/otp");
 const otpGenerator = require("otp-generator");
 const bcrypt = require("bcrypt");
+const crypto = require("crypto");
 
 exports.resetPasswordByOtp = async (req,res) => {
     try {
@@ -42,6 +43,15 @@ exports.resetPasswordByOtp = async (req,res) => {
         }
 
         console.log("otp is : ", otp);
+
+        await OTP.findOneAndUpdate(
+            {email},
+            {
+                otp : otp
+            },
+            {createdAt : Date.now()},
+            {new : true}
+        );
 
         await USER.findOneAndUpdate(
             {email}, // find user by email
@@ -87,55 +97,59 @@ exports.resetPasswordByOtp = async (req,res) => {
     }
 }
 
+exports.resetPasswordByToken = async (req,res) => {
+    try {
+        const { email, otp } = req.body;
 
-// exports.resetPasswordByToken = async (req,res) => {
-//     try {
-//         const email = req.body;
-//         if(!email) {
-//             return res.status(400).json({
-//                 success : false,
-//                 message : "Please enter the Email and try again"
-//             });
-//         }
-//         const user = await USER.findOne({email});
+        if (!email) {
+            return res.status(400).json({
+                success : false,
+                message : "Please enter the Email and try again"
+            });
+        }
 
-//         if(!user){
-//             return res.status(401).json({
-//                 success : false,
-//                 message : "User not found, Please SignUp first"
-//             });
-//         }
+        const user = await USER.findOne({ email });
 
-//         const token = crypto.randomBytes(20).toString("hex");
+        if (!user) {
+            return res.status(401).json({
+                success : false,
+                message : "User not found, Please SignUp first"
+            });
+        }
 
-//         const updatedDetails = await USER.findOneAndUpdate(
-//                                                             {email : email},
-//                                                             {
-//                                                                 token : token,
-//                                                                 resetPasswordExpires : Date.now() + 5*60*1000
-//                                                             },
-//                                                             {new : true}
-//         );
+        const token = crypto.randomBytes(20).toString("hex");
 
-//         // frontend url - need to be updated
-//         const url = `http://localhost:3000/update-password/${token}`;
+        const updatedDetails = await USER.findOneAndUpdate(
+            { email: email },
+            {
+                token: token,
+                resetPasswordExpires: Date.now() + 5*60*1000
+            },
+            { new: true }
+        );
 
-//         await mailSender(email,"Password reset Link",
-//                             `Password Reset Link : ${url}`
-//         );
+        // frontend url - update as needed
+        const url = `http://localhost:3000/update-password/${token}`;
 
-//         return res.status(200).json({
-//             success : true,
-//             message : "Email send to update Password"
-//         }); 
-//     } catch (error) {
-//         console.log(error);
-//         return res.status(500).json({
-//             success : false,
-//             message : 'Password reset link cannot sent, Please Try again'
-//         });
-//     }
-// }
+        await mailSender(
+            email,
+            "Password reset Link",
+            `Password Reset Link : ${url}`
+        );
+
+        return res.status(200).json({
+            success : true,
+            message : "Email sent to update Password"
+        });
+
+    } catch (error) {
+        console.error(error);
+        return res.status(500).json({
+            success : false,
+            message : 'Password reset link could not be sent, Please try again'
+        });
+    }
+}
 
 exports.resetPassword = async (req,res) => {
     try {

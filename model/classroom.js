@@ -45,7 +45,13 @@ const classroomSchema = new mongoose.Schema({
     classUrl: {
         type: String,
         required: true
-    }
+    },
+    pendingRequests: [
+        {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "user"
+        }
+    ]
 }, { timestamps: true });
 
 module.exports = mongoose.model("classroom", classroomSchema);

@@ -5,6 +5,9 @@ const lessonSchema = new mongoose.Schema ({
         type : String,
         required : true
     },
+    tyoeOfLesson : {
+        type : String
+    },
     sublesson : [
         {
             type : mongoose.Schema.Types.ObjectId,
