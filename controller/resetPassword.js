@@ -1,6 +1,5 @@
 const USER = require("../model/user");
 const mailSender = require("../util/mailSender");
-const jwt = require('jsonwebtoken');
 const OTP = require("../model/otp");
 const otpGenerator = require("otp-generator");
 const bcrypt = require("bcrypt");
@@ -45,12 +44,12 @@ exports.resetPasswordByOtp = async (req,res) => {
         console.log("otp is : ", otp);
 
         await OTP.findOneAndUpdate(
-            {email},
+            { email },
             {
-                otp : otp
+                otp: otp,
+                createdAt: Date.now()
             },
-            {createdAt : Date.now()},
-            {new : true}
+            { upsert: true, new: true }
         );
 
         await USER.findOneAndUpdate(
@@ -65,31 +64,25 @@ exports.resetPasswordByOtp = async (req,res) => {
 
         // send otp by mail
         try {
-            const sendOtpMail = await mailSender(
+            await mailSender(
                 email,
                 `Request to change passsword`,
                 `OTP to change password is : ${otp}`
             );
-        } catch (error) {
-            return res.status(200).json({
+        } catch (_error) {
+            return res.status(500).json({
                 success : false,
-                message : "Error in sending otp"
+                message : "Error in sending otp email, please check SMTP configuration"
             });
         }
 
-        // const sendOtpMail = await mailSender(
-        //     email,
-        //     `Request to change passsword`,
-        //     `OTP to change password is : ${otp}`
-        // );
-
         return res.status(200).json({
-            success : false,
-            message : "Otp for changing passsword send successfully"
+            success : true,
+            message : "Otp for changing passsword sent successfully"
         });
         
     } catch (error) {
-        console.log(error);
+        console.error(error);
         return res.status(500).json({
             success : false,
             message : 'Password reset link cannot sent, Please Try again'
@@ -99,7 +92,7 @@ exports.resetPasswordByOtp = async (req,res) => {
 
 exports.resetPasswordByToken = async (req,res) => {
     try {
-        const { email, otp } = req.body;
+        const { email } = req.body;
 
         if (!email) {
             return res.status(400).json({
@@ -119,7 +112,7 @@ exports.resetPasswordByToken = async (req,res) => {
 
         const token = crypto.randomBytes(20).toString("hex");
 
-        const updatedDetails = await USER.findOneAndUpdate(
+        await USER.findOneAndUpdate(
             { email: email },
             {
                 token: token,

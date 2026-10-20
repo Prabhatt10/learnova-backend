@@ -1,5 +1,4 @@
 const mongoose = require("mongoose");
-const classroom = require("./classroom");
 
 const fileSchema = new mongoose.Schema ({
     classroom : {
@@ -27,7 +26,7 @@ const fileSchema = new mongoose.Schema ({
     },
     uploadedAt : {
         type : Date,
-        default : Date.now()
+        default : Date.now
     }
 });
 

@@ -3,12 +3,13 @@ require("dotenv").config();
 
 exports.auth = async (req, res, next) => {
   try {
-    // Get token from body, cookies or Authorization header
+    // Get token from cookies, Authorization header, or body
     const token =
-      req.body.token ||
       req.cookies?.token ||
+      req.cookies?.accessToken ||
       (req.header("Authorization") &&
-        req.header("Authorization").replace("Bearer ", "").trim());
+        req.header("Authorization").replace("Bearer ", "").trim()) ||
+      req.body?.token;
 
     if (!token) {
       return res.status(401).json({
@@ -17,46 +18,48 @@ exports.auth = async (req, res, next) => {
       });
     }
 
-    // Verify token
+    // Verify token with JWT_SECRET (fallback to ACCESS_SECRET if available)
     let decoded;
     try {
       decoded = jwt.verify(token, process.env.JWT_SECRET);
-      console.log("Decode is : ", decoded);
-    } catch (error) {
-      return res.status(401).json({
-        success: false,
-        message: "Token is invalid",
-      });
+    } catch (_err) {
+      if (process.env.ACCESS_SECRET) {
+        try {
+          decoded = jwt.verify(token, process.env.ACCESS_SECRET);
+        } catch (_innerErr) {
+          return res.status(401).json({
+            success: false,
+            message: "Token is invalid or expired",
+          });
+        }
+      } else {
+        return res.status(401).json({
+          success: false,
+          message: "Token is invalid or expired",
+        });
+      }
     }
 
-    // Normalize payload → always ensure req.user.id is available
-    // if (decoded.id) {
-    //   req.user = { id: decoded.id };
-    // } else if (decoded._id) {
-    //   req.user = { id: decoded._id };
-    // } else if (decoded.user && decoded.user.id) {
-    //   req.user = { id: decoded.user.id };
-    // } else if (decoded.user && decoded.user._id) {
-    //   req.user = { id: decoded.user._id };
-    // } else if (decoded.userId) {   // 🔥 add this
-    //   req.user = { id: decoded.userId };
-    // } else {
-    //   return res.status(401).json({
-    //     success: false,
-    //     message: "Invalid token payload",
-    //   });
-    // }
+    // Safely extract user ID from decoded payload
+    const userId =
+      decoded?.id ||
+      decoded?._id ||
+      decoded?.userId ||
+      decoded?.user?._id ||
+      decoded?.user?.id;
 
-    req.user = { id: decoded.id || decoded._id || decoded.userId || decoded.user._id };
-
-    console.log("ID in auth middleware is : ",req.user._id);
-
-    if (!req.user.id) {
+    if (!userId) {
       return res.status(401).json({
         success: false,
         message: "Token payload missing user id",
       });
     }
+
+    req.user = {
+      ...decoded,
+      id: userId.toString(),
+      _id: userId.toString(),
+    };
 
     next();
   } catch (error) {

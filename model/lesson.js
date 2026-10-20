@@ -5,6 +5,9 @@ const lessonSchema = new mongoose.Schema ({
         type : String,
         required : true
     },
+    typeOfLesson : {
+        type : String
+    },
     tyoeOfLesson : {
         type : String
     },
@@ -21,4 +24,4 @@ const lessonSchema = new mongoose.Schema ({
     }
 });
 
-module.exports = mongoose.model("lesson" , lessonSchema);0
+module.exports = mongoose.model("lesson" , lessonSchema);

@@ -14,6 +14,22 @@ const PORT = process.env.PORT || 4000;
 const {dbConnect} = require("./config/database.js");
 dbConnect();
 
+// Pre-register all Mongoose models to allow population across collections
+require("./model/user");
+require("./model/setting");
+require("./model/classroom");
+require("./model/file");
+require("./model/lesson");
+require("./model/sublesson");
+require("./model/quiz");
+require("./model/otp");
+
+const cors = require("cors");
+
+app.use(cors({
+    origin: ["http://localhost:5173", "http://localhost:3000", "http://localhost:5174"],
+    credentials: true,
+}));
 app.use(express.json());
 app.use(cookieParser());
 

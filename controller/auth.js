@@ -1,7 +1,6 @@
 const USER = require("../model/user");
 const OTP = require("../model/otp");
 const otpGenerator = require("otp-generator");
-const {mailVerificationTemplate} = require("../mailTemplate/verification");
 const mailSender = require("../util/mailSender");
 const bcrypt = require("bcrypt");
 const {generateAccessToken , generateRefreshToken} = require("../util/token");
@@ -68,52 +67,54 @@ exports.signUp = async (req,res) => {
             isAccountVerified: true,
         });
 
-        // create refresh token and access token 
+        // create token, refresh token and access token 
+        const token = jwt.sign(
+            { id: user._id, email: user.email },
+            process.env.JWT_SECRET,
+            { expiresIn: "24h" }
+        );
         const refreshToken = await generateRefreshToken(user._id);
         const accessToken = await generateAccessToken(user._id);
 
-        // Save tokens in cookies
-        res.cookie("accessToken", accessToken, {
-            httpOnly: true,                   // cannot be accessed via JS
-            secure: process.env.NODE_ENV === "production", // only over HTTPS in prod
-            sameSite: process.env.NODE_ENV === "production" ? "none" : "strict", 
-            maxAge: 15 * 60 * 1000,           // 15 minutes
-        });
-
-        res.cookie("refreshToken", refreshToken, {
+        const cookieOptions = {
             httpOnly: true,
             secure: process.env.NODE_ENV === "production",
-            sameSite: process.env.NODE_ENV === "production" ? "none" : "strict",
-            maxAge: 7 * 24 * 60 * 60 * 1000,  // 7 days
-        });
+            sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+        };
 
-        // send welcome email
+        // Save tokens in cookies
+        res.cookie("token", token, { ...cookieOptions, maxAge: 24 * 60 * 60 * 1000 });
+        res.cookie("accessToken", accessToken, { ...cookieOptions, maxAge: 15 * 60 * 1000 });
+        res.cookie("refreshToken", refreshToken, { ...cookieOptions, maxAge: 7 * 24 * 60 * 60 * 1000 });
+
+        // send welcome email (non-blocking if mail service fails)
         try {
-            const welcomeMail = await mailSender(
+            await mailSender(
                 email,
                 "Honour to onboard your Learning journey",
-                `Welcome ${userName} to LearnOva! We are glad to have you on board. Please verify your email to get started`
-            )
-        } catch (error) {
-            return res.status(403).json({
-                success : false,
-                message : "Welcome email cannot be send"
-            });
+                `Welcome ${userName} to LearnOva! We are glad to have you on board.`
+            );
+        } catch (mailError) {
+            console.error("Welcome email could not be sent:", mailError.message);
         }
 
-    return res.status(200).json({
-        success : true,
-        message : "User registered Successfuly",
-        refreshToken,
-        accessToken
-    });
+        user.password = undefined;
+
+        return res.status(200).json({
+            success : true,
+            message : "User registered successfully",
+            token,
+            accessToken,
+            refreshToken,
+            user
+        });
 
     }
     catch(error){
-        console.log(error);
+        console.error("Error in registration:", error);
         return res.status(500).json({
             success : false,
-            message : "code fatt gya registration me"
+            message : "Error during registration, please try again"
         });
     }
 }
@@ -159,17 +160,15 @@ exports.sendRegistrationOtp = async (req,res) => {
 
         console.log("this is the otp : " ,otp);
 
-        const otpPayload = {email,otp};
-
-        const otpBody = await OTP.create(otpPayload);
+        await OTP.create({ email, otp });
 
         try {
-            const registrationMail = await mailSender(
+            await mailSender(
                 email,
                 "Registration Confirmation OTP",
                 `Enter this OTP to confirm Registration ${otp}`
             );
-        } catch (error) {
+        } catch (_error) {
             return res.status(404).json({
                 success : false,
                 message : "Can't send OTP, Please try again later"
@@ -236,37 +235,20 @@ exports.login = async (req,res) => {
             { expiresIn: "24h" }
         );
 
-        res.cookie("token", token, {
-            httpOnly: true,
-            secure: process.env.NODE_ENV === "production",
-            sameSite: "strict",
-        });
-
-
-        console.log("token is : ", token);
-
-        // create refresh token and access token
         const accessToken = await generateAccessToken(user._id);
         const refreshToken = await generateRefreshToken(user._id);
 
-        // Save tokens in cookies
-        res.cookie("accessToken", accessToken, {
-            httpOnly: true,                   // cannot be accessed via JS
-            secure: process.env.NODE_ENV === "production", // only over HTTPS in prod
-            sameSite: process.env.NODE_ENV === "production" ? "none" : "strict", 
-            maxAge: 15 * 60 * 1000,           // 15 minutes
-        });
-
-        res.cookie("refreshToken", refreshToken, {
+        const cookieOptions = {
             httpOnly: true,
             secure: process.env.NODE_ENV === "production",
-            sameSite: process.env.NODE_ENV === "production" ? "none" : "strict",
-            maxAge: 7 * 24 * 60 * 60 * 1000,  // 7 days
-        });
+            sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+        };
+
+        res.cookie("token", token, { ...cookieOptions, maxAge: 24 * 60 * 60 * 1000 });
+        res.cookie("accessToken", accessToken, { ...cookieOptions, maxAge: 15 * 60 * 1000 });
+        res.cookie("refreshToken", refreshToken, { ...cookieOptions, maxAge: 7 * 24 * 60 * 60 * 1000 });
 
         user.password = undefined;
-
-        // console.log(user.password);
 
         return res.status(200).json({
             success : true,
@@ -279,12 +261,74 @@ exports.login = async (req,res) => {
 
 
     } catch (error) {
-        console.log(error);
+        console.error("Login error:", error);
         return res.status(500).json({
             success : false,
-            message : error.message,
-            message : "Internal Server error while login, Please try again after some"
+            message : error.message || "Internal server error while login, please try again"
         });
     }
 }
+
+const SETTING = require("../model/setting");
+
+exports.getUserProfile = async (req, res) => {
+    try {
+        const userID = req.user.id;
+        const user = await USER.findById(userID).select("-password").populate("additionalDetails");
+        if (!user) {
+            return res.status(404).json({ success: false, message: "User not found" });
+        }
+        return res.status(200).json({ success: true, user });
+    } catch (error) {
+        console.error("Get profile error:", error);
+        return res.status(500).json({ success: false, message: "Failed to fetch profile" });
+    }
+};
+
+exports.updateUserProfile = async (req, res) => {
+    try {
+        const userID = req.user.id;
+        const { userName, bio, contactNumber, profileImage } = req.body;
+
+        const user = await USER.findById(userID);
+        if (!user) {
+            return res.status(404).json({ success: false, message: "User not found" });
+        }
+
+        if (userName) user.userName = userName.trim();
+        await user.save();
+
+        let setting = null;
+        if (user.additionalDetails) {
+            setting = await SETTING.findById(user.additionalDetails);
+        }
+
+        if (!setting) {
+            setting = await SETTING.create({
+                user: userID,
+                bio: bio || "",
+                contactNumber: contactNumber || "",
+                profileImage: profileImage || "",
+            });
+            user.additionalDetails = setting._id;
+            await user.save();
+        } else {
+            if (bio !== undefined) setting.bio = bio;
+            if (contactNumber !== undefined) setting.contactNumber = contactNumber;
+            if (profileImage !== undefined) setting.profileImage = profileImage;
+            await setting.save();
+        }
+
+        const updatedUser = await USER.findById(userID).select("-password").populate("additionalDetails");
+
+        return res.status(200).json({
+            success: true,
+            message: "Profile updated successfully",
+            user: updatedUser,
+        });
+    } catch (error) {
+        console.error("Update profile error:", error);
+        return res.status(500).json({ success: false, message: "Failed to update profile" });
+    }
+};
 

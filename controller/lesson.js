@@ -7,7 +7,6 @@ const CLASSROOM = require("../model/classroom");
 exports.createLesson = async (req,res) => {
     try {
         const {name,typeOfLesson} = req.body;
-        const {userID} = req.user.id;
         
         if(!name){
             return res.status(401).json({
@@ -16,7 +15,6 @@ exports.createLesson = async (req,res) => {
             });
         }
         
-        // add new sublesson to the sublesson section
         const newLesson = await LESSON.create({
             name,
             typeOfLesson,
@@ -25,15 +23,15 @@ exports.createLesson = async (req,res) => {
 
         return res.status(200).json({
             success : true,
-            message : "Lesson is created succcessfully"
+            message : "Lesson is created successfully",
+            lesson: newLesson
         });
 
     } catch (error) {
-        console.log(error);
+        console.error(error);
         return res.status(500).json({
             success : false,
-            message : "Error in creating Lesson",
-            message : error.message
+            message : error.message || "Error in creating Lesson"
         });
     }
 }
